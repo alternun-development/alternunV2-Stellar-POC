@@ -16,8 +16,8 @@ All 7 contracts operational on Stellar testnet.
 
 ## ?? Quick Start
 
-See `/docs` for detailed setup instructions.
+See documentation for detailed setup instructions.
 
 ## ????? Author
 
-Developed by [Tu Nombre]
+Developed by Jose Santiago Gomez
