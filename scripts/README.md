@@ -25,10 +25,10 @@ The POC implements the complete GBT minting flow:
 
 alternun-poc-clean/
 +-- contracts/          # Soroban smart contracts
-¦   +-- oracle_mock/    # Gold price oracle simulation
-¦   +-- treasury/       # Fund distribution (50/30/20)
-¦   +-- gbt_token/      # GBT token implementation
-¦   +-- gbt_minter/     # Main minting logic
+Â¦   +-- oracle_mock/    # Gold price oracle simulation
+Â¦   +-- treasury/       # Fund distribution (50/30/20)
+Â¦   +-- gbt_token/      # GBT token implementation
+Â¦   +-- gbt_minter/     # Main minting logic
 +-- scripts/            # Deployment and testing scripts
 +-- frontend/           # React frontend (TBD)
 +-- docs/               # Documentation
@@ -51,14 +51,14 @@ Run the deployment scripts in order:
 # 2. Initialize contracts with configuration
 ./scripts/initialize-contracts.ps1
 
-# 3. Add a sample mine (Nechí simulation)
+# 3. Add a sample mine (NechÃ­ simulation)
 ./scripts/add-sample-mine.ps1
 
 # 4. Test the complete minting flow
 ./scripts/test-mint.ps1
 
 Sample Mine Data
-The POC includes a simulated mine based on Nechí, Antioquia with the following resources:
+The POC includes a simulated mine based on NechÃ­, Antioquia with the following resources:
 
 Inferred: 500,000 grams (15% collateral weight)
 Indicated: 1,200,000 grams (30% collateral weight)
@@ -100,7 +100,7 @@ Modularity: Contracts are loosely coupled for easy upgrades
 Testing: Comprehensive testing scripts included
 Documentation: All functions documented with clear purpose
 
-Grant Application Ready
+
 This POC demonstrates:
 
 Technical feasibility of tokenizing underground gold reserves
@@ -109,6 +109,6 @@ Scalable architecture supporting multiple mines
 Real-world impact through regenerative project funding
 Innovation in RWA tokenization on Stellar
 
-Ready for Stellar grants and investor demonstrations.
+Ready for Stellarand investor demonstrations.
 Contact
 For questions about this POC implementation, refer to the Alternun technical documentation or contact the development team, or info@alternun.io
