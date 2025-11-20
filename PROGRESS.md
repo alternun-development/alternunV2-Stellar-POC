@@ -1,14 +1,14 @@
 # Alternun POC - Progress Status
 
-## Completed (Session 1):
-? Project structure reorganized
-? 4 core contracts compiled (oracle_mock, treasury, gbt_token, gbt_minter)  
-? React frontend with Freighter wallet integration
-? Basic mint/dashboard/admin interfaces
+## Completed:
+Project structure reorganized
+7 core contracts compiled.  
+React frontend with Freighter wallet integration
+Basic mint/dashboard/admin interfaces
 
-## In Progress (Session 2):
-?? Project Vaults Contract - implementing pGBT staking functionality
-?? Visual improvements for better UX
+## In Progress:
+Project Vaults Contract - implementing pGBT staking functionality
+Visual improvements for better UX
 
 ## Next Steps:
 - Complete Project Vaults staking functions
