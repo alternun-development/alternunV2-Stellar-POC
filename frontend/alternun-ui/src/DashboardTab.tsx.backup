@@ -1,0 +1,244 @@
+import { useState, useEffect } from "react";
+import { useContracts } from "./useContracts";
+import { MINE_DATA, SOLAR_PROJECT } from "./contracts.config";
+
+export function DashboardTab() {
+  const [goldPrice, setGoldPrice] = useState<number | null>(null);
+  const [activeMinesCount, setActiveMinesCount] = useState<number>(1);
+  const [maxMineId, setMaxMineId] = useState<number>(2);
+  const [totalMinted, setTotalMinted] = useState<number | null>(null);
+  const [availableCapacity, setAvailableCapacity] = useState<number | null>(null);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  
+  const { loading, getGoldPrice, getTotalMinted, getMineCapacity, getActiveMinesCount, getTotalCapacityAllMines } = useContracts();
+
+  useEffect(() => {
+    if (dataLoaded) return;
+    
+    const loadData = async () => {
+      try {
+        // Get number of active mines
+        const minesCount = await getActiveMinesCount(10);
+        setActiveMinesCount(minesCount);
+        setMaxMineId(minesCount);
+        
+        const price = await getGoldPrice();
+        if (price) setGoldPrice(price);
+
+        const minted = await getTotalMinted();
+        if (minted !== null) setTotalMinted(minted);
+
+        // Get total capacity across all mines
+        const capacity = await getTotalCapacityAllMines(minesCount);
+        if (capacity) setAvailableCapacity(capacity);
+        
+        setDataLoaded(true);
+      } catch'@
+
+# Actualizar el display de "Active Mines" para mostrar el número real
+$content = $content -replace '<div className="text-3xl font-bold text-white mb-2">1</div>', '<div className="text-3xl font-bold text-white mb-2">{activeMinesCount}</div>'
+
+# Actualizar totalCapacity para ser calculado dinámicamente
+$content = $content -replace 'const totalCapacity = MINE_DATA\.AL1\.capacity_gm / 1000;', @'
+// Calculate theoretical capacity (will be replaced with actual calc from contract)
+  const theoreticalCapacity = availableCapacity !== null && totalMinted !== null 
+    ? availableCapacity + totalMinted 
+    : MINE_DATA.AL1.capacity_gm / 1000;
+  const totalCapacity = theoreticalCapacity; (err) {
+        console.error("Error loading dashboard data:", err);
+        setDataLoaded(true);
+      }
+    };
+
+    loadData();
+  }, [dataLoaded]);
+
+  const totalCapacity = MINE_DATA.AL1.capacity_gm / 1000; // Convert to grams
+
+  return (
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="text-center mb-6">
+        <h2 className="text-4xl font-bold text-alternun mb-4">System Dashboard</h2>
+        <p className="text-gray" style={{ fontSize: "1.125rem", maxWidth: "32rem", margin: "0 auto" }}>
+          Live data from Alternun ecosystem on Stellar testnet
+        </p>
+      </div>
+
+      {/* Key Metrics */}
+      <div className="grid-4">
+        <div className="preview-card text-center" style={{ background: "linear-gradient(135deg, #14b8a6 0%, #0d9488 100%)", border: "2px solid #14b8a6" }}>
+          <div className="text-3xl font-bold text-white mb-2">
+            {availableCapacity !== null ? availableCapacity.toFixed(2) : "Loading..."}
+          </div>
+          <p style={{ color: "#ccfbf1", fontSize: "0.875rem", fontWeight: "600" }}>Available Capacity</p>
+          <p style={{ color: "#99f6e4", fontSize: "0.75rem" }}>grams GBT</p>
+        </div>
+
+        <div className="preview-card text-center" style={{ background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)", border: "2px solid #f59e0b" }}>
+          <div className="text-3xl font-bold text-white mb-2">
+            {goldPrice ? `$${goldPrice.toFixed(2)}` : "Loading..."}
+          </div>
+          <p style={{ color: "#fef3c7", fontSize: "0.875rem", fontWeight: "600" }}>Gold Price</p>
+          <p style={{ color: "#fde68a", fontSize: "0.75rem" }}>per gram</p>
+        </div>
+
+        <div className="preview-card text-center" style={{ background: "linear-gradient(135deg, #a855f7 0%, #9333ea 100%)", border: "2px solid #a855f7" }}>
+          <div className="text-3xl font-bold text-white mb-2">
+            {totalMinted !== null ? totalMinted.toFixed(2) : "Loading..."}
+          </div>
+          <p style={{ color: "#f3e8ff", fontSize: "0.875rem", fontWeight: "600" }}>GBT Minted</p>
+          <p style={{ color: "#e9d5ff", fontSize: "0.75rem" }}>grams total</p>
+        </div>
+
+        <div className="preview-card text-center" style={{ background: "linear-gradient(135deg, #10b981 0%, #059669 100%)", border: "2px solid #10b981" }}>
+          <div className="text-3xl font-bold text-white mb-2">1</div>
+          <p style={{ color: "#d1fae5", fontSize: "0.875rem", fontWeight: "600" }}>Active Mines</p>
+          <p style={{ color: "#bbf7d0", fontSize: "0.75rem" }}>producing capacity</p>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid-2">
+        {/* Mine Resources */}
+        <div className="card">
+          <h3 className="text-2xl font-bold text-white mb-6 flex items-center">
+            <span style={{ marginRight: "0.75rem" }}>??</span>
+            {MINE_DATA.AL1.name}
+          </h3>
+          
+          <div className="space-y-4">
+            <h4 className="font-bold text-alternun" style={{ fontSize: "1.125rem" }}>Resource Categories (NI 43-101)</h4>
+            
+            {[
+              { label: "Inferred", value: MINE_DATA.AL1.inferidos_gm / 1000, weight: "15%", color: "#ef4444" },
+            ].map((resource) => (
+              <div key={resource.label} className="flex items-center justify-between preview-card">
+                <div className="flex items-center space-x-4">
+                  <span style={{
+                    padding: "4px 8px",
+                    fontSize: "0.75rem",
+                    fontWeight: "700",
+                    borderRadius: "12px",
+                    backgroundColor: resource.color,
+                    color: "white"
+                  }}>
+                    {resource.weight}
+                  </span>
+                  <span className="font-semibold text-white">{resource.label}</span>
+                </div>
+                <span className="font-bold text-alternun">
+                  {(resource.value / 1000).toFixed(1)}k grams
+                </span>
+              </div>
+            ))}
+
+            <div style={{ marginTop: "1.5rem", padding: "1rem", background: "#374151", borderRadius: "8px", border: "1px solid #6b7280" }}>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-white font-semibold">Total Resources:</span>
+                  <span className="text-alternun font-bold">
+                    {(MINE_DATA.AL1.inferidos_gm / 1000000).toFixed(1)}k grams
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white font-semibold">Theoretical Capacity:</span>
+                  <span className="text-alternun font-bold">
+                    {totalCapacity.toFixed(2)} grams
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-white font-semibold">Already Minted:</span>
+                  <span style={{ color: "#a855f7" }} className="font-bold">
+                    {totalMinted !== null ? totalMinted.toFixed(2) : "..."} grams
+                  </span>
+                </div>
+                <div className="flex justify-between" style={{ paddingTop: "0.5rem", borderTop: "1px solid #6b7280" }}>
+                  <span className="text-white font-bold">Available Now:</span>
+                  <span className="text-white font-bold" style={{ fontSize: "1.125rem" }}>
+                    {availableCapacity !== null ? availableCapacity.toFixed(2) : "..."} grams
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Solar Project */}
+        <div className="card" style={{ background: "linear-gradient(135deg, #92400e 0%, #78350f 100%)", border: "1px solid #f59e0b" }}>
+          <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
+            <span style={{ marginRight: "0.5rem" }}>??</span>
+            {SOLAR_PROJECT.name}
+          </h3>
+          
+          <p className="text-white mb-4" style={{ fontSize: "0.875rem" }}>
+            ?? {SOLAR_PROJECT.location}
+          </p>
+
+          <div className="space-y-3">
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">Area:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.area_hectares} hectáreas</span>
+              </div>
+            </div>
+
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">Solar Panels:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.panels.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">Capacity:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.total_capacity_mw} MW</span>
+              </div>
+            </div>
+
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">Annual Production:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.annual_production_mwh.toLocaleString()} MWh</span>
+              </div>
+            </div>
+
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">Homes Powered:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.homes_powered.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <div className="preview-card" style={{ backgroundColor: "rgba(255,255,255,0.1)" }}>
+              <div className="flex justify-between">
+                <span className="text-white font-semibold">CO2 Offset:</span>
+                <span className="text-gold font-bold">{SOLAR_PROJECT.co2_offset_tons.toLocaleString()} tons/year</span>
+              </div>
+            </div>
+
+            <div style={{ padding: "1rem", backgroundColor: "#10b981", borderRadius: "8px", textAlign: "center", border: "1px solid #059669", marginTop: "1rem" }}>
+              <p className="text-white font-bold" style={{ fontSize: "1rem" }}>Target Funding</p>
+              <p className="text-white" style={{ fontSize: "1.5rem", fontWeight: "700" }}>
+                {SOLAR_PROJECT.target_funding_gbt.toLocaleString()} GBT
+              </p>
+              <p className="text-white" style={{ fontSize: "0.75rem" }}>
+                (~${(SOLAR_PROJECT.target_funding_gbt * (goldPrice || 0.65)).toLocaleString()})
+              </p>
+            </div>
+
+            <div style={{ padding: "0.75rem", backgroundColor: "rgba(16, 185, 129, 0.2)", borderRadius: "8px", border: "1px solid #10b981" }}>
+              <p style={{ fontSize: "0.75rem", color: "#d1fae5", textAlign: "center" }}>
+                Status: <span className="font-bold">Awaiting Funding</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+

@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "contracts/oracle_mock",
+    "contracts/treasury", 
+    "contracts/gbt_token",
+    "contracts/gbt_minter",
+    "contracts/project_vaults",
+    "contracts/pgbt_token",
+    "contracts/ept_token"
+]
+resolver = "2"
+
+[workspace.dependencies]
+soroban-sdk = "21.7.0"
