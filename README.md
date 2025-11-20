@@ -2,7 +2,7 @@
 
 Complete proof-of-concept for tokenizing underground gold reserves on Stellar blockchain.
 
-## ?? System Overview
+## System Overview
 
 - **GBT Token**: Gold-backed tokens representing physical gold reserves
 - **Multi-Mine System**: Dynamic support for multiple mines with NI 43-101 resources
@@ -10,14 +10,14 @@ Complete proof-of-concept for tokenizing underground gold reserves on Stellar bl
 - **Real-time Dashboard**: Live data from blockchain
 - **Admin Panel**: Mine registration and management
 
-## ?? Deployed Contracts (Testnet)
+## Deployed Contracts (Testnet)
 
 All 7 contracts operational on Stellar testnet.
 
-## ?? Quick Start
+## Quick Start
 
 See documentation for detailed setup instructions.
 
-## ????? Author
+## Author
 
 Developed by Jose Santiago Gomez
