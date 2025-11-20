@@ -47,3 +47,6 @@ export const SOLAR_PROJECT = {
   co2_offset_tons: 1728, // ~0.5 tons CO2/MWh
   target_funding_gbt: 36923, // ~$24,000 / $0.65 per gram
 };
+
+
+

@@ -1,0 +1,376 @@
+#![no_std]
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, String,
+    token::Client as TokenClient, symbol_short,
+    panic_with_error, contracterror,
+};
+
+#[contracttype]
+#[derive(Clone, PartialEq)]
+pub enum ProjectStatus {
+    Proposed,
+    Active,
+    Funded,
+    Completed,
+    Cancelled,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct ProjectData {
+    pub id: u32,
+    pub name: String,
+    pub description: String,
+    pub target_gbt_gm: i128,
+    pub raised_gbt_gm: i128,
+    pub loan_amount_usd_1e7: i128,
+    pub total_debt_usd_1e7: i128,
+    pub status: ProjectStatus,
+    pub admin: Address,
+    pub created_ledger: u32,
+    pub funding_deadline: u32,
+    pub gold_price_1e7: i128,
+}
+
+#[contracttype]
+#[derive(Clone)]
+pub struct UserParticipation {
+    pub gbt_staked_gm: i128,
+    pub pgbt_balance: i128,
+    pub ept_balance: i128,
+    pub debt_owed_usd_1e7: i128,
+    pub debt_paid_usd_1e7: i128,
+    pub profits_claimed: i128,
+    pub last_claim_ledger: u32,
+}
+
+#[contracttype]
+pub enum DataKey {
+    Admin,
+    TokenGbt,
+    TokenPgbt,
+    TokenEpt,
+    ProjectCount,
+    Project(u32),
+    UserProject(Address, u32),
+    ProjectProfit(u32),
+}
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ProjectVaultError {
+    NotAdmin = 1,
+    ProjectNotFound = 2,
+    ProjectNotActive = 3,
+    InsufficientStake = 4,
+    AlreadyConverted = 5,
+    NoProfit = 6,
+    DebtNotFullyPaid = 7,
+    InvalidAmount = 8,
+}
+
+#[contract]
+pub struct ProjectVaults;
+
+#[contractimpl]
+impl ProjectVaults {
+    pub fn init(
+        e: Env,
+        admin: Address,
+        token_gbt: Address,
+        token_pgbt: Address,
+        token_ept: Address
+    ) {
+        if e.storage().instance().has(&DataKey::Admin) { return; }
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::TokenGbt, &token_gbt);
+        e.storage().instance().set(&DataKey::TokenPgbt, &token_pgbt);
+        e.storage().instance().set(&DataKey::TokenEpt, &token_ept);
+        e.storage().instance().set(&DataKey::ProjectCount, &0u32);
+    }
+
+    pub fn create_project(
+        e: Env,
+        admin: Address,
+        name: String,
+        description: String,
+        target_gbt_gm: i128,
+        loan_amount_usd_1e7: i128,
+        funding_deadline: u32,
+    ) -> u32 {
+        let stored_admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic_with_error!(&e, ProjectVaultError::NotAdmin);
+        }
+        admin.require_auth();
+
+        let count: u32 = e.storage().instance().get(&DataKey::ProjectCount).unwrap_or(0);
+        let new_id = count + 1;
+
+        let project = ProjectData {
+            id: new_id,
+            name,
+            description,
+            target_gbt_gm,
+            raised_gbt_gm: 0,
+            loan_amount_usd_1e7,
+            total_debt_usd_1e7: 0,
+            status: ProjectStatus::Proposed,
+            admin: admin.clone(),
+            created_ledger: e.ledger().sequence(),
+            funding_deadline,
+            gold_price_1e7: 0,
+        };
+
+        e.storage().instance().set(&DataKey::Project(new_id), &project);
+        e.storage().instance().set(&DataKey::ProjectCount, &new_id);
+        e.events().publish((symbol_short!("proj_new"),), (new_id,));
+        new_id
+    }
+
+    pub fn approve_project(e: Env, admin: Address, project_id: u32) {
+        let stored_admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic_with_error!(&e, ProjectVaultError::NotAdmin);
+        }
+        admin.require_auth();
+
+        let mut project: ProjectData = e.storage().instance()
+            .get(&DataKey::Project(project_id))
+            .unwrap_or_else(|| panic_with_error!(&e, ProjectVaultError::ProjectNotFound));
+
+        project.status = ProjectStatus::Active;
+        e.storage().instance().set(&DataKey::Project(project_id), &project);
+        e.events().publish((symbol_short!("approved"),), (project_id,));
+    }
+
+    pub fn stake_gbt(
+        e: Env,
+        user: Address,
+        project_id: u32,
+        amount_gm: i128,
+        gold_price_1e7: i128,
+    ) {
+        user.require_auth();
+
+        let mut project: ProjectData = e.storage().instance()
+            .get(&DataKey::Project(project_id))
+            .unwrap_or_else(|| panic_with_error!(&e, ProjectVaultError::ProjectNotFound));
+
+        if project.status != ProjectStatus::Active {
+            panic_with_error!(&e, ProjectVaultError::ProjectNotActive);
+        }
+
+        let gbt_token: Address = e.storage().instance().get(&DataKey::TokenGbt).unwrap();
+        let gbt = TokenClient::new(&e, &gbt_token);
+        gbt.transfer(&user, &e.current_contract_address(), &amount_gm);
+
+        project.raised_gbt_gm += amount_gm;
+        
+        if project.gold_price_1e7 == 0 {
+            project.gold_price_1e7 = gold_price_1e7;
+        }
+
+        let user_usd_value = (amount_gm * gold_price_1e7) / 1000;
+        let total_staked_usd = (project.raised_gbt_gm * gold_price_1e7) / 1000;
+        // Calculate debt per token ratio
+        let total_staked_usd = (project.raised_gbt_gm * gold_price_1e7) / 1000;
+        let debt_ratio = if total_staked_usd > 0 {
+            (project.loan_amount_usd_1e7 * 100) / total_staked_usd
+        } else {
+            0
+        };
+
+        // Reject if debt ratio would exceed 50%
+        if debt_ratio > 50 {
+            panic_with_error!(&e, ProjectVaultError::InsufficientStake);
+        }
+
+        let user_debt = if total_staked_usd > 0 {
+            (project.loan_amount_usd_1e7 * user_usd_value) / total_staked_usd
+        } else {
+            0
+        };
+
+        let key = DataKey::UserProject(user.clone(), project_id);
+        let mut participation: UserParticipation = e.storage().instance()
+            .get(&key)
+            .unwrap_or(UserParticipation {
+                gbt_staked_gm: 0,
+                pgbt_balance: 0,
+                ept_balance: 0,
+                debt_owed_usd_1e7: 0,
+                debt_paid_usd_1e7: 0,
+                profits_claimed: 0,
+                last_claim_ledger: 0,
+            });
+
+        participation.gbt_staked_gm += amount_gm;
+        participation.pgbt_balance += amount_gm;
+        participation.debt_owed_usd_1e7 += user_debt;
+        project.total_debt_usd_1e7 += user_debt;
+
+        e.storage().instance().set(&key, &participation);
+        e.storage().instance().set(&DataKey::Project(project_id), &project);
+        e.events().publish((symbol_short!("staked"),), (user, project_id, amount_gm));
+    }
+
+    pub fn prepay_debt(
+        e: Env,
+        user: Address,
+        project_id: u32,
+        amount_usd_1e7: i128,
+    ) {
+        user.require_auth();
+
+        if amount_usd_1e7 <= 0 {
+            panic_with_error!(&e, ProjectVaultError::InvalidAmount);
+        }
+
+        let key = DataKey::UserProject(user.clone(), project_id);
+        let mut participation: UserParticipation = e.storage().instance()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&e, ProjectVaultError::ProjectNotFound));
+
+        let remaining_debt = participation.debt_owed_usd_1e7 - participation.debt_paid_usd_1e7;
+        
+        if remaining_debt <= 0 {
+            panic_with_error!(&e, ProjectVaultError::DebtNotFullyPaid);
+        }
+
+        let payment = if amount_usd_1e7 > remaining_debt {
+            remaining_debt
+        } else {
+            amount_usd_1e7
+        };
+
+        participation.debt_paid_usd_1e7 += payment;
+        e.storage().instance().set(&key, &participation);
+
+        if participation.debt_paid_usd_1e7 >= participation.debt_owed_usd_1e7 {
+            let updated = Self::convert_to_ept_internal(e.clone(), user.clone(), project_id, participation);
+            e.storage().instance().set(&key, &updated);
+        }
+
+        e.events().publish((symbol_short!("prepaid"),), (user, project_id, payment));
+    }
+
+    pub fn claim_profits(e: Env, user: Address, project_id: u32) -> i128 {
+        user.require_auth();
+
+        let key = DataKey::UserProject(user.clone(), project_id);
+        let mut participation: UserParticipation = e.storage().instance()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&e, ProjectVaultError::ProjectNotFound));
+
+        let total_profit: i128 = e.storage().instance()
+            .get(&DataKey::ProjectProfit(project_id))
+            .unwrap_or(0);
+
+        if total_profit <= 0 {
+            panic_with_error!(&e, ProjectVaultError::NoProfit);
+        }
+
+        let user_share = if participation.ept_balance > 0 {
+            participation.ept_balance
+        } else {
+            participation.pgbt_balance
+        };
+
+        let project: ProjectData = e.storage().instance()
+            .get(&DataKey::Project(project_id))
+            .unwrap();
+
+        let user_profit = (total_profit * user_share) / project.raised_gbt_gm;
+        let claimable = user_profit - participation.profits_claimed;
+
+        if claimable <= 0 {
+            return 0;
+        }
+
+        let remaining_debt = participation.debt_owed_usd_1e7 - participation.debt_paid_usd_1e7;
+        
+        let (debt_payment, actual_claim) = if remaining_debt > 0 {
+            if claimable >= remaining_debt {
+                (remaining_debt, claimable - remaining_debt)
+            } else {
+                (claimable, 0)
+            }
+        } else {
+            (0, claimable)
+        };
+
+        participation.debt_paid_usd_1e7 += debt_payment;
+        participation.profits_claimed += claimable;
+
+        if participation.debt_paid_usd_1e7 >= participation.debt_owed_usd_1e7 && participation.ept_balance == 0 {
+            let updated = Self::convert_to_ept_internal(e.clone(), user.clone(), project_id, participation);
+            e.storage().instance().set(&key, &updated);
+        } else {
+            e.storage().instance().set(&key, &participation);
+        }
+
+        e.events().publish((symbol_short!("claimed"),), (user, project_id, actual_claim));
+        actual_claim
+    }
+
+    fn convert_to_ept_internal(
+        e: Env,
+        user: Address,
+        project_id: u32,
+        mut participation: UserParticipation,
+    ) -> UserParticipation {
+        if participation.ept_balance > 0 {
+            return participation;
+        }
+
+        let amount = participation.pgbt_balance;
+        let gbt_token: Address = e.storage().instance().get(&DataKey::TokenGbt).unwrap();
+        let gbt = TokenClient::new(&e, &gbt_token);
+        gbt.transfer(&e.current_contract_address(), &user, &amount);
+
+        participation.ept_balance = amount;
+        participation.pgbt_balance = 0;
+        e.events().publish((symbol_short!("converted"),), (user.clone(), project_id, amount));
+        
+        participation
+    }
+
+    pub fn get_participation(e: Env, user: Address, project_id: u32) -> UserParticipation {
+        let key = DataKey::UserProject(user, project_id);
+        e.storage().instance()
+            .get(&key)
+            .unwrap_or(UserParticipation {
+                gbt_staked_gm: 0,
+                pgbt_balance: 0,
+                ept_balance: 0,
+                debt_owed_usd_1e7: 0,
+                debt_paid_usd_1e7: 0,
+                profits_claimed: 0,
+                last_claim_ledger: 0,
+            })
+    }
+
+    pub fn get_project(e: Env, project_id: u32) -> ProjectData {
+        e.storage().instance()
+            .get(&DataKey::Project(project_id))
+            .unwrap_or_else(|| panic_with_error!(&e, ProjectVaultError::ProjectNotFound))
+    }
+
+    pub fn add_profit(e: Env, admin: Address, project_id: u32, amount_usd_1e7: i128) {
+        let stored_admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        if admin != stored_admin {
+            panic_with_error!(&e, ProjectVaultError::NotAdmin);
+        }
+        admin.require_auth();
+
+        let current: i128 = e.storage().instance()
+            .get(&DataKey::ProjectProfit(project_id))
+            .unwrap_or(0);
+        
+        e.storage().instance().set(&DataKey::ProjectProfit(project_id), &(current + amount_usd_1e7));
+        e.events().publish((symbol_short!("profit"),), (project_id, amount_usd_1e7));
+    }
+}
+
