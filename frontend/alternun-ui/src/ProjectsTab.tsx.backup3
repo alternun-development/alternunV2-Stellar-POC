@@ -1,0 +1,425 @@
+import { useState, useEffect } from "react";
+import { useProjects } from "./useProjects";
+
+interface ProjectsTabProps {
+  wallet: any;
+}
+
+interface Project {
+  id: number;
+  name: string;
+  description: string;
+  min_stake_unit_gm: number;
+  loan_amount_usd_1e7: number;
+  total_raised_usd_1e7: number;
+  stake_units_issued: number;
+  activeTab: string;
+  funding_deadline: number;
+  gold_price_1e7: number;
+  is_finalized: boolean;
+}
+
+interface UserParticipation {
+  gbt_staked_gm: number;
+  stake_units: number;
+  debt_owed_usd_1e7: number;
+  debt_paid_usd_1e7: number;
+  ept_claimed: boolean;
+}
+
+export function ProjectsTab({ wallet }: ProjectsTabProps) {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [userParticipation, setUserParticipation] = useState<Map<number, UserParticipation>>(new Map());
+  const [activeTab, setActiveTab] = useState<"open" | "construction" | "operational">("open");
+  const { loading, error, getProject, getParticipation, stakeGBT } = useProjects();
+  const [stakingProjectId, setStakingProjectId] = useState<number | null>(null);
+
+  // Load projects
+  useEffect(() => {
+    console.log("?? Loading projects...");
+    // For now, load mock project directly
+    // Will connect to blockchain in next iteration
+    const mockProject: Project = {
+      id: 1,
+      name: "Rionegro Solar Farm - Pilot",
+      description: "Pilot project - 100 solar panels, 2.4MW capacity",
+      min_stake_unit_gm: 5000,
+      loan_amount_usd_1e7: 1000000000,
+      total_raised_usd_1e7: 0,
+      stake_units_issued: 0,
+      activeTab: "Active",
+      funding_deadline: 2880000,
+      gold_price_1e7: 6500000,
+      is_finalized: false,
+    };
+    
+    setProjects([mockProject]);
+    console.log("? Project loaded:", mockProject);
+  }, []);
+
+  const handleStake = async (projectId: number) => {
+    if (!wallet.connected) {
+      alert("Please connect your wallet first");
+      return;
+    }
+
+    const project = projects.find(p => p.id === projectId);
+    if (!project) {
+      alert("Project not found");
+      return;
+    }
+
+    const stakeUnit = project.min_stake_unit_gm / 1000;
+    const goldPrice = project.gold_price_1e7 || 6500000; // Default const handleStake = async (projectId: number) => {
+    if (!wallet.connected) {
+      alert("Please connect your wallet first");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "This will stake 5 GBT in the project. You will need at least $100 USD worth of stake to meet the 50% debt limit. Continue?"
+    );
+
+    if (!confirmed) return;
+
+    setStakingProjectId(projectId);
+
+    try {
+      // Get current gold price (in production, from oracle)
+      const goldPrice = 6500000; // $0.65 per gram * 1e7
+
+      const success = await stakeGBT(wallet, projectId, goldPrice);
+
+      if (success) {
+        alert("Successfully staked 5 GBT! Your stake unit has been recorded.");
+        
+        // Reload project data
+        const projectData = await getProject(projectId);
+        if (projectData) {
+          setProjects(projects.map(p => p.id === projectId ? projectData : p));
+        }
+
+        // Reload participation
+        const participation = await getParticipation(wallet.publicKey, projectId);
+        if (participation) {
+          setUserParticipation(new Map(userParticipation.set(projectId, participation)));
+        }
+      } else {
+        alert("Staking failed. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("Staking error:", err);
+      alert(`Error: ${err.message}`);
+    } finally {
+      setStakingProjectId(null);
+    }
+  };.65/gram
+    const stakeValueUSD = (stakeUnit * goldPrice) / 10000000;
+
+    const confirmed = window.confirm(
+      `You are about to stake ${stakeUnit} GBT (~${stakeValueUSD.toFixed(2)} USD) in "${project.name}".\n\n` +
+      `This will create 1 stake unit and you will owe a proportional share of the ${(project.loan_amount_usd_1e7 / 10000000).toFixed(0)} loan.\n\n` +
+      `Continue?`
+    );
+
+    if (!confirmed) return;
+
+    setStakingProjectId(projectId);
+
+    try {
+      console.log("?? Starting stake process...");
+      console.log("- Project ID:", projectId);
+      console.log("- Gold Price:", goldPrice);
+      console.log("- Stake Amount:", stakeUnit, "GBT");
+
+      // Call stakeGBT from useProjects hook
+      const success = await stakeGBT(wallet, projectId, goldPrice);
+
+      if (success) {
+        alert(`? Successfully staked ${stakeUnit} GBT!\n\nYour stake unit has been recorded. You can now track your position and debt in the project.`);
+        
+        console.log("? Stake successful, reloading data...");
+        
+        // Reload project data
+        const updatedProject = await getProject(projectId);
+        if (updatedProject) {
+          setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
+        }
+
+        // Reload user participation
+        if (wallet.publicKey) {
+          const participation = await getParticipation(wallet.publicKey, projectId);
+          if (participation) {
+            const newMap = new Map(userParticipation);
+            newMap.set(projectId, participation);
+            setUserParticipation(newMap);
+          }
+        }
+      } else {
+        alert("? Staking failed. Please check the console for details and try again.");
+      }
+    } catch (err: any) {
+      console.error("? Staking error:", err);
+      alert(`? Error: ${err.message}\n\nPlease check the console for more details.`);
+    } finally {
+      setStakingProjectId(null);
+    }
+  };
+
+  const filterProjects = (activeTab: string) => {
+    console.log("?? DEBUG: Filtering projects", { activeTab, totalProjects: projects.length, projects });
+    const filtered = projects.filter(p => {
+      if (activeTab === "open") return p.activeTab === "Active" && !p.is_finalized;
+      if (activeTab === "construction") return p.is_finalized && p.activeTab !== "Operational";
+      if (activeTab === "operational") return p.activeTab === "Operational";
+      return false;
+    });
+    console.log("?? DEBUG: Filtered result", { activeTab, count: filtered.length, filtered });
+    return filtered;
+  };
+
+  const calculateProgress = (project: Project) => {
+    const raised = project.total_raised_usd_1e7 / 10000000;
+    const target = (project.loan_amount_usd_1e7 / 10000000) * 2; // Need 2x for 50% debt
+    return Math.min((raised / target) * 100, 100);
+  };
+
+  const calculateDebtRatio = (project: Project) => {
+    if (project.total_raised_usd_1e7 === 0) return 0;
+    return (project.loan_amount_usd_1e7 / project.total_raised_usd_1e7) * 100;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Hero Section */}
+      <div className="text-center mb-6">
+        <h2 className="text-4xl font-bold text-alternun mb-4">Projects</h2>
+        <p className="text-gray" style={{ fontSize: "1.125rem", maxWidth: "32rem", margin: "0 auto" }}>
+          Invest in regenerative projects with gold-backed collateral
+        </p>
+      </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="card" style={{ backgroundColor: "#991b1b", borderColor: "#dc2626" }}>
+          <p className="text-white">?? Error: {error}</p>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: "0.75rem", marginBottom: "2rem" }}>
+    <button
+      onClick={() => setActiveTab("open")}
+      style={{
+        padding: "0.75rem 2rem",
+        borderRadius: "0.5rem",
+        fontWeight: "600",
+        transition: "all 0.3s",
+        backgroundColor: activeTab === "open" ? "#14b8a6" : "#1f2937",
+        color: activeTab === "open" ? "#0f172a" : "#9ca3af",
+        border: "none",
+        cursor: "pointer",
+        boxShadow: activeTab === "open" ? "0 0 20px rgba(20, 184, 166, 0.3)" : "none"
+      }}
+      onMouseEnter={(e) => {
+        if (activeTab !== "open") {
+          e.currentTarget.style.backgroundColor = "#374151";
+          e.currentTarget.style.color = "#ffffff";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (activeTab !== "open") {
+          e.currentTarget.style.backgroundColor = "#1f2937";
+          e.currentTarget.style.color = "#9ca3af";
+        }
+      }}
+    >
+      Open for Staking
+    </button>
+    <button
+      onClick={() => setActiveTab("construction")}
+      style={{
+        padding: "0.75rem 2rem",
+        borderRadius: "0.5rem",
+        fontWeight: "600",
+        transition: "all 0.3s",
+        backgroundColor: activeTab === "construction" ? "#14b8a6" : "#1f2937",
+        color: activeTab === "construction" ? "#0f172a" : "#9ca3af",
+        border: "none",
+        cursor: "pointer",
+        boxShadow: activeTab === "construction" ? "0 0 20px rgba(20, 184, 166, 0.3)" : "none"
+      }}
+      onMouseEnter={(e) => {
+        if (activeTab !== "construction") {
+          e.currentTarget.style.backgroundColor = "#374151";
+          e.currentTarget.style.color = "#ffffff";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (activeTab !== "construction") {
+          e.currentTarget.style.backgroundColor = "#1f2937";
+          e.currentTarget.style.color = "#9ca3af";
+        }
+      }}
+    >
+      In Construction
+    </button>
+    <button
+      onClick={() => setActiveTab("operational")}
+      style={{
+        padding: "0.75rem 2rem",
+        borderRadius: "0.5rem",
+        fontWeight: "600",
+        transition: "all 0.3s",
+        backgroundColor: activeTab === "operational" ? "#14b8a6" : "#1f2937",
+        color: activeTab === "operational" ? "#0f172a" : "#9ca3af",
+        border: "none",
+        cursor: "pointer",
+        boxShadow: activeTab === "operational" ? "0 0 20px rgba(20, 184, 166, 0.3)" : "none"
+      }}
+      onMouseEnter={(e) => {
+        if (activeTab !== "operational") {
+          e.currentTarget.style.backgroundColor = "#374151";
+          e.currentTarget.style.color = "#ffffff";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (activeTab !== "operational") {
+          e.currentTarget.style.backgroundColor = "#1f2937";
+          e.currentTarget.style.color = "#9ca3af";
+        }
+      }}
+    >
+      Operational
+    </button>
+  </div>
+
+      {/* Projects Grid */}
+      {loading ? (
+        <div className="text-center text-white" style={{ padding: "3rem" }}>
+          <div className="spinner"></div>
+          <p>Loading projects...</p>
+        </div>
+      ) : (
+        <div className="grid-2">
+          {filterProjects(activeTab).map((project) => {
+            const progress = calculateProgress(project);
+            const debtRatio = calculateDebtRatio(project);
+            const stakeUnit = project.min_stake_unit_gm / 1000;
+            const raised = project.total_raised_usd_1e7 / 10000000;
+            const target = (project.loan_amount_usd_1e7 / 10000000) * 2;
+            const participation = userParticipation.get(project.id);
+
+            return (
+              <div key={project.id} className="card">
+                <h3 className="text-2xl font-bold text-white mb-4">{project.name}</h3>
+                <p className="text-gray mb-4" style={{ fontSize: "0.875rem" }}>{project.description}</p>
+
+                {/* Progress Bar */}
+                <div style={{ marginBottom: "1rem" }}>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-white" style={{ fontSize: "0.875rem" }}>
+                      ${raised.toFixed(0)} / ${target.toFixed(0)}
+                    </span>
+                    <span className="text-alternun font-bold">{progress.toFixed(0)}%</span>
+                  </div>
+                  <div style={{ width: "100%", height: "8px", backgroundColor: "#374151", borderRadius: "4px" }}>
+                    <div
+                      style={{
+                        width: `${progress}%`,
+                        height: "100%",
+                        backgroundColor: debtRatio > 50 ? "#ef4444" : "#14b8a6",
+                        borderRadius: "4px",
+                        transition: "width 0.3s ease",
+                      }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Metrics */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between preview-card">
+                    <span className="text-white">Stake Unit:</span>
+                    <span className="text-alternun font-bold">{stakeUnit} GBT</span>
+                  </div>
+                  <div className="flex justify-between preview-card">
+                    <span className="text-white">Units Issued:</span>
+                    <span className="text-alternun font-bold">{project.stake_units_issued}</span>
+                  </div>
+                  <div className="flex justify-between preview-card">
+                    <span className="text-white">Current Debt Ratio:</span>
+                    <span className={`font-bold ${debtRatio > 50 ? "text-red-500" : "text-gold"}`}>
+                      {debtRatio.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between preview-card">
+                    <span className="text-white">Max Allowed:</span>
+                    <span className="text-gold font-bold">50%</span>
+                  </div>
+                </div>
+
+                {/* User Participation */}
+                {participation && participation.stake_units > 0 && (
+                  <div className="preview-card mb-4" style={{ backgroundColor: "#1f2937" }}>
+                    <h4 className="text-white font-bold mb-2">Your Position</h4>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray">Units:</span>
+                        <span className="text-white">{participation.stake_units}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray">GBT Staked:</span>
+                        <span className="text-white">{(participation.gbt_staked_gm / 1000).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray">Debt Owed:</span>
+                        <span className="text-red-400">${(participation.debt_owed_usd_1e7 / 10000000).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray">Debt Paid:</span>
+                        <span className="text-green-400">${(participation.debt_paid_usd_1e7 / 10000000).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Button */}
+                {activeTab === activeTab && (
+                  <button
+                    onClick={() => handleStake(project.id)}
+                    className="btn-primary"
+                    style={{ width: "100%" }}
+                    disabled={!wallet.connected || stakingProjectId === project.id || debtRatio > 50}
+                  >
+                    {!wallet.connected 
+                      ? "Connect Wallet" 
+                      : stakingProjectId === project.id 
+                      ? "Staking..." 
+                      : debtRatio > 50
+                      ? "Max Debt Reached"
+                      : `Stake ${stakeUnit} GBT`}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {filterProjects(activeTab).length === 0 && !loading && (
+        <div className="text-center text-gray" style={{ padding: "3rem" }}>
+          <p style={{ fontSize: "1.125rem" }}>No projects in this category yet</p>
+          <p style={{ fontSize: "0.875rem", marginTop: "0.5rem" }}>Check back soon for new opportunities</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+
+
+
+
+

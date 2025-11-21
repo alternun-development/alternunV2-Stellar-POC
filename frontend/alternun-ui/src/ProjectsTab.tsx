@@ -57,14 +57,26 @@ export function ProjectsTab({ wallet }: ProjectsTabProps) {
     console.log("? Project loaded:", mockProject);
   }, []);
 
-  const handleStake = async (projectId: number) => {
+const handleStake = async (projectId: number) => {
     if (!wallet.connected) {
       alert("Please connect your wallet first");
       return;
     }
 
+    const project = projects.find(p => p.id === projectId);
+    if (!project) {
+      alert("Project not found");
+      return;
+    }
+
+    const stakeUnit = project.min_stake_unit_gm / 1000;
+    const goldPrice = project.gold_price_1e7 || 6500000;
+    const stakeValueUSD = (stakeUnit * goldPrice) / 10000000;
+
     const confirmed = window.confirm(
-      "This will stake 5 GBT in the project. You will need at least $100 USD worth of stake to meet the 50% debt limit. Continue?"
+      `You are about to stake ${stakeUnit} GBT (~$${stakeValueUSD.toFixed(2)} USD) in "${project.name}".\n\n` +
+      `This will create 1 stake unit and you will owe a proportional share of the $${(project.loan_amount_usd_1e7 / 10000000).toFixed(0)} loan.\n\n` +
+      `Continue?`
     );
 
     if (!confirmed) return;
@@ -72,31 +84,37 @@ export function ProjectsTab({ wallet }: ProjectsTabProps) {
     setStakingProjectId(projectId);
 
     try {
-      // Get current gold price (in production, from oracle)
-      const goldPrice = 6500000; // $0.65 per gram * 1e7
+      console.log("Starting stake process...");
+      console.log("- Project ID:", projectId);
+      console.log("- Gold Price:", goldPrice);
+      console.log("- Stake Amount:", stakeUnit, "GBT");
 
       const success = await stakeGBT(wallet, projectId, goldPrice);
 
       if (success) {
-        alert("Successfully staked 5 GBT! Your stake unit has been recorded.");
+        alert(`Successfully staked ${stakeUnit} GBT!\n\nYour stake unit has been recorded. You can now track your position and debt in the project.`);
         
-        // Reload project data
-        const projectData = await getProject(projectId);
-        if (projectData) {
-          setProjects(projects.map(p => p.id === projectId ? projectData : p));
+        console.log("Stake successful, reloading data...");
+        
+        const updatedProject = await getProject(projectId);
+        if (updatedProject) {
+          setProjects(projects.map(p => p.id === projectId ? updatedProject : p));
         }
 
-        // Reload participation
-        const participation = await getParticipation(wallet.publicKey, projectId);
-        if (participation) {
-          setUserParticipation(new Map(userParticipation.set(projectId, participation)));
+        if (wallet.publicKey) {
+          const participation = await getParticipation(wallet.publicKey, projectId);
+          if (participation) {
+            const newMap = new Map(userParticipation);
+            newMap.set(projectId, participation);
+            setUserParticipation(newMap);
+          }
         }
       } else {
-        alert("Staking failed. Please try again.");
+        alert("Staking failed. Please check the console for details and try again.");
       }
     } catch (err: any) {
       console.error("Staking error:", err);
-      alert(`Error: ${err.message}`);
+      alert(`Error: ${err.message}\n\nPlease check the console for more details.`);
     } finally {
       setStakingProjectId(null);
     }
@@ -351,6 +369,9 @@ export function ProjectsTab({ wallet }: ProjectsTabProps) {
     </div>
   );
 }
+
+
+
 
 
 
