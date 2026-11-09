@@ -189,6 +189,18 @@ impl GbtMinter {
         if avail < 0 { 0 } else { avail }
     }
 
+    pub fn minted_gm(e: Env) -> i128 {
+        e.storage().instance().get::<_, i128>(&DataKey::MintedGm).unwrap_or(0)
+    }
+
+    pub fn fee_bps(e: Env) -> i128 { read_fee_bps(&e) }
+
+    pub fn fc_bps(e: Env) -> i128 { read_fcbps(&e) }
+
+    pub fn is_paused(e: Env) -> bool {
+        e.storage().instance().get::<_, bool>(&DataKey::Paused).unwrap_or(false)
+    }
+
     pub fn preview_mint(e: Env, amount_stable_1e7: i128, max_id_inclusive: u32) -> Preview {
         let fee_bps = read_fee_bps(&e);
         let price_1e7 = crate::oracle::OracleClient::new(&e, &read_oracle(&e)).get_price();

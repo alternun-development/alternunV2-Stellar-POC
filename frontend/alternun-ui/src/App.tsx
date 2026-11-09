@@ -1,173 +1,88 @@
-import React, { useState } from "react";
-import "./App.css";
-import { useWallet } from "./useWallet";
-import { MintTab } from "./MintTab";
-import { DashboardTab } from "./DashboardTab";
-import { AdminTab } from "./AdminTab";
-import { ProjectsTab } from "./ProjectsTab";
+import { useEffect, useState } from "react";
+import { useApp } from "./state/app";
+import { Toasts, WalletMenu } from "./components/ui";
+import { Overview } from "./views/Overview";
+import { Mint } from "./views/Mint";
+import { Projects } from "./views/Projects";
+import { Portfolio } from "./views/Portfolio";
+import { Protocol } from "./views/Protocol";
 
-// Types for our application
-interface ProjectData {
-  id: number;
-  name: string;
-  description: string;
-  target_gbt_gm: number;
-  raised_gbt_gm: number;
-  status: "Proposed" | "Active" | "Funded" | "Completed" | "Cancelled";
-}
+export type View = "overview" | "mint" | "projects" | "portfolio" | "protocol";
 
-interface UserParticipation {
-  gbt_staked_gm: number;
-  pgbt_balance: number;
-  ept_balance: number;
-  profits_claimed: number;
-}
+const NAV: { key: View; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "mint", label: "Mint GBT" },
+  { key: "projects", label: "Projects" },
+  { key: "portfolio", label: "Portfolio" },
+  { key: "protocol", label: "Protocol" },
+];
 
-function App() {
-  const [activeTab, setActiveTab] = useState<"mint" | "projects" | "dashboard" | "admin">("mint");
-  const wallet = useWallet();
-  
-  // Mock data for demonstration
-  const mockProjects: ProjectData[] = [
-    {
-      id: 1,
-      name: "?? Nech� Solar Farm",
-      description: "100MW solar installation providing clean energy to 50,000 homes while generating sustainable returns.",
-      target_gbt_gm: 50000000,
-      raised_gbt_gm: 32000000,
-      status: "Active"
-    },
-    {
-      id: 2, 
-      name: "?? Amalfi Reforestation",
-      description: "Reforestation of 500 hectares with native species, creating carbon credits and biodiversity.",
-      target_gbt_gm: 25000000,
-      raised_gbt_gm: 8500000,
-      status: "Active"
-    },
-    {
-      id: 3,
-      name: "?? Girardota Water Treatment", 
-      description: "Advanced water treatment facility processing 10,000L/day ensuring clean water access.",
-      target_gbt_gm: 30000000,
-      raised_gbt_gm: 30000000,
-      status: "Funded"
-    }
-  ];
+const fromHash = (): View => {
+  const h = window.location.hash.replace("#", "") as View;
+  return NAV.some((n) => n.key === h) ? h : "overview";
+};
 
-  const mockUserParticipation: UserParticipation = {
-    gbt_staked_gm: 15500000,
-    pgbt_balance: 12000000,
-    ept_balance: 3500000,
-    profits_claimed: 850000
+export default function App() {
+  const [view, setView] = useState<View>(fromHash);
+  const { protocolError } = useApp();
+
+  useEffect(() => {
+    const h = () => setView(fromHash());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+
+  const go = (v: View) => {
+    window.location.hash = v;
+    setView(v);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
-    <div style={{ minHeight: "100vh" }}>
-      <header className="header-gradient" style={{ padding: "1rem 0" }}>
-        <div className="max-w-7xl px-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div style={{ 
-                width: "40px", 
-                height: "40px", 
-                background: "linear-gradient(135deg, #14b8a6, #0d9488)",
-                borderRadius: "8px",
-                display: "flex",
-                alignItems: "center", 
-                justifyContent: "center",
-                color: "white",
-                fontWeight: "bold",
-                fontSize: "1.2rem"
-              }}>
-                A
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-alternun">ALTERNUN</h1>
-                <p style={{ fontSize: "0.75rem", color: "#14b8a6", fontWeight: "500" }}>
-                  Digital Gold Mining
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <nav className="flex space-x-4">
-                {[
-                  { key: "mint", label: "Mint GBT" },
-                  { key: "projects", label: "Projects" },
-                  { key: "dashboard", label: "Dashboard" },
-                  { key: "admin", label: "Admin" }
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveTab(tab.key as any)}
-                    style={{
-                      padding: "8px 16px",
-                      fontSize: "0.875rem",
-                      fontWeight: "500",
-                      borderRadius: "8px",
-                      border: "none",
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                      backgroundColor: activeTab === tab.key ? "#14b8a6" : "transparent",
-                      color: activeTab === tab.key ? "white" : "#d1d5db"
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-              
-              {wallet.connected && (
-                <div style={{ 
-                  fontSize: "0.75rem", 
-                  color: "#14b8a6", 
-                  background: "#374151", 
-                  padding: "4px 12px", 
-                  borderRadius: "20px",
-                  border: "1px solid #14b8a6"
-                }}>
-                  {wallet.publicKey.substring(0, 8)}...
-                </div>
-              )}
-              
-              <button
-                onClick={() => {
-                  console.log("??? Connect button clicked! Connected:", wallet.connected);
-                  if (wallet.connected) {
-                    wallet.disconnect();
-                  } else {
-                    wallet.connect();
-                  }
-                }}
-                disabled={wallet.loading}
-                className="btn-primary"
-                style={{ opacity: wallet.loading ? 0.5 : 1 }}
-              >
-                {wallet.loading ? "Connecting..." : wallet.connected ? "Connected ?" : "Connect Wallet"}
+    <>
+      <header className="topbar">
+        <div className="shell topbar-inner">
+          <button className="brand" onClick={() => go("overview")} aria-label="Alternun home">
+            <img src="/brand/alternun-indigo.png" alt="Alternun" />
+            <small>Gold reserve<br />tokenization</small>
+          </button>
+          <nav className="nav">
+            {NAV.map((n) => (
+              <button key={n.key} className={view === n.key ? "active" : ""} onClick={() => go(n.key)}>
+                {n.label}
               </button>
-            </div>
-          </div>
+            ))}
+          </nav>
+          <WalletMenu />
         </div>
       </header>
+      <div className="demo-strip">
+        <div className="shell">
+          <span className="badge mint"><span className="dot live" /> Stellar testnet</span>
+          <span>Live smart contracts. Mine and project data are illustrative for this pilot.</span>
+        </div>
+      </div>
 
-      <main className="max-w-7xl py-8 px-4">
-        {activeTab === "mint" && <MintTab wallet={wallet} />}
-        {activeTab === "projects" && <ProjectsTab projects={mockProjects} userParticipation={mockUserParticipation} wallet={wallet} />}
-        {activeTab === "dashboard" && <DashboardTab />}
-        {activeTab === "admin" && <AdminTab wallet={wallet} />}
+      <main className="shell">
+        {protocolError && (
+          <div className="notice error" style={{ marginTop: 24 }}>
+            Could not read the contracts from Stellar: {protocolError}
+          </div>
+        )}
+        {view === "overview" && <Overview go={go} />}
+        {view === "mint" && <Mint />}
+        {view === "projects" && <Projects />}
+        {view === "portfolio" && <Portfolio go={go} />}
+        {view === "protocol" && <Protocol />}
       </main>
-    </div>
+
+      <footer className="footer">
+        <div className="shell row between wrap">
+          <span>© {new Date().getFullYear()} Alternun · Gold-backed tokenization on Stellar</span>
+          <span>Pilot environment · Stellar testnet · Soroban smart contracts</span>
+        </div>
+      </footer>
+      <Toasts />
+    </>
   );
 }
-
-
-
-
-export default App;
-
-
-
-
-
-

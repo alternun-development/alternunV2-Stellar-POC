@@ -48,6 +48,14 @@ impl Treasury {
         e.storage().instance().set(&State::ADDR_A, &addr_a);
     }
 
+    pub fn pools(e: Env) -> (Address, Address, Address) {
+        (
+            e.storage().instance().get(&State::ADDR_P).unwrap(),
+            e.storage().instance().get(&State::ADDR_R).unwrap(),
+            e.storage().instance().get(&State::ADDR_A).unwrap(),
+        )
+    }
+
     pub fn route(e: Env, token: Address, from: Address, amount: i128) {
         let addr_p: Address = e.storage().instance().get(&State::ADDR_P).unwrap();
         let addr_r: Address = e.storage().instance().get(&State::ADDR_R).unwrap();
