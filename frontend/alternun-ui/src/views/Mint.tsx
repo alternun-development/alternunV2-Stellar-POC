@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CONTRACTS, MAX_MINE_ID, TREASURY_SPLIT, USDC_ISSUER_SECRET } from "../config";
+import { CONTRACTS, MAX_MINE_ID, MINE_META, TREASURY_SPLIT, USDC_ISSUER_SECRET } from "../config";
 import { fmtGrams, fmtGramsCompact, fmtNum, fmtUsd } from "../format";
 import { useApp } from "../state/app";
 import { addUsdcTrustline, accountExists, fundWithFriendbot, invoke, requestTestUsdc, sv, toUsd1e7 } from "../stellar/client";
@@ -28,7 +28,7 @@ export function Mint() {
     let live = true;
     const t = setTimeout(async () => {
       try {
-        const pv = await previewMint(amt);
+        const pv = await previewMint(amt, p);
         if (live) {
           setPreview(pv);
           setPreviewErr(null);
@@ -46,7 +46,7 @@ export function Mint() {
 
   const needsSetup = !!account && (!account.trustline || account.usdc < 1);
   const insufficient = !!account && account.usdc < amt;
-  const canMint = !!signer && !!preview?.meetsMin && !insufficient && amt > 0 && !p?.paused;
+  const canMint = !!signer && !!preview?.meetsMin && !preview?.exceedsCapacity && !insufficient && amt > 0 && !p?.paused;
 
   const doMint = () =>
     runTx("Minting GBT", async (onPhase) => {
@@ -138,6 +138,7 @@ export function Mint() {
           </div>
 
           {preview && !preview.meetsMin && amt > 0 && <div className="notice">The minimum mint is 1 gram of GBT.</div>}
+          {preview?.exceedsCapacity && <div className="notice">This amount exceeds the reserve capacity left. The contract rejects it rather than charging for grams it cannot mint.</div>}
           {insufficient && account?.trustline && <div className="notice">Not enough USDC in this account.</div>}
           {previewErr && <div className="notice error">{previewErr}</div>}
 
@@ -160,13 +161,24 @@ export function Mint() {
               <h3><IconCoins /> Where the USDC goes</h3>
             </div>
             {TREASURY_SPLIT.map((s) => (
-              <div className="kv" key={s.key}>
-                <span>{s.label} <span className="faint">{s.share * 100}%</span></span>
-                <span className="num">{preview ? fmtUsd(preview.netUsd * s.share, 2) : "…"}</span>
+              <div key={s.key}>
+                <div className="kv">
+                  <span>{s.label} <span className="faint">{+(s.share * 100).toFixed(1)}%</span></span>
+                  <span className="num">{preview ? fmtUsd(preview.split[s.key], 2) : "…"}</span>
+                </div>
+                {s.key === "miners" &&
+                  preview?.mines.map((m) => (
+                    <div className="kv sub-kv" key={m.id}>
+                      <span>↳ {MINE_META[m.id]?.owner ?? `Mine ${m.id} owner`} <span className="faint">backs {fmtNum(m.grams, 3)} g</span></span>
+                      <span className="num">{fmtUsd(m.usd, 2)}</span>
+                    </div>
+                  ))}
               </div>
             ))}
-            <div className="kv"><span>Protocol fee</span><span className="num">{preview ? fmtUsd(preview.feeUsd, 2) : "…"}</span></div>
-            <p className="xs faint" style={{ marginTop: 10 }}>Executed atomically by the treasury contract in the mint transaction.</p>
+            <div className="kv"><span>Alternun protocol fee</span><span className="num">{preview ? fmtUsd(preview.feeUsd, 2) : "…"}</span></div>
+            <p className="xs faint" style={{ marginTop: 10 }}>
+              Executed atomically in the mint transaction. Each mine owner is paid in proportion to the GBT its mine backs.
+            </p>
           </div>
 
           <div className="card">

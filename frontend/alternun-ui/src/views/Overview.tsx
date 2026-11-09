@@ -1,18 +1,18 @@
-import { MINE_META, RESOURCE_WEIGHTS, TREASURY_SPLIT } from "../config";
+import { AIRS_PER_GBT, AIRS_URL, MINE_META, RESOURCE_WEIGHTS, TREASURY_SPLIT } from "../config";
 import { fmtGrams, fmtGramsCompact, fmtNum, fmtPct, fmtUsd, fmtUsdCompact } from "../format";
 import { useApp } from "../state/app";
-import { IconArrow, IconCoins, IconGold, IconLayers, IconMine, IconRefresh, IconShield } from "../components/icons";
+import { CategoryIcon, IconArrow, IconCoins, IconExternal, IconGold, IconLayers, IconMine, IconRefresh, IconShield } from "../components/icons";
 import { Progress, Stat } from "../components/ui";
 import type { View } from "../App";
 
-const SPLIT_COLORS = ["var(--mint)", "var(--indigo-300)", "var(--gold)"];
+const SPLIT_COLORS = ["var(--mint)", "var(--indigo-300)", "var(--gold)", "#7fd1ff", "#c79bff", "#ff9f7a"];
 
 export function Overview({ go }: { go: (v: View) => void }) {
   const { protocol: p, loading, refresh } = useApp();
   const L = !p;
   const capacityUsed = p ? p.mintedG / Math.max(p.totalCapacityG, 1) : 0;
   const backedUsd = p ? p.projects.reduce((s, x) => s + x.raisedUsd, 0) : 0;
-  const poolTotal = p ? p.pools.projects + p.pools.recovery + p.pools.alternun : 0;
+  const poolTotal = p ? TREASURY_SPLIT.reduce((s, x) => s + p.pools[x.key], 0) : 0;
 
   return (
     <div className="page">
@@ -32,6 +32,11 @@ export function Overview({ go }: { go: (v: View) => void }) {
             </button>
             <button className="btn btn-ghost btn-lg" onClick={() => go("projects")}>Explore projects</button>
           </div>
+          <a className="airs-line" href={AIRS_URL} target="_blank" rel="noreferrer">
+            <img src="/brand/airs-symbol.png" alt="" />
+            <span>Stake GBT in solar or reforestation projects and earn <b>20 Airs per GBT</b>.</span>
+            <span className="mint">Discover Airs <IconExternal /></span>
+          </a>
         </div>
 
         <div className="card indigo live-card">
@@ -71,7 +76,7 @@ export function Overview({ go }: { go: (v: View) => void }) {
             {
               icon: <IconCoins />,
               title: "Mint GBT with USDC",
-              text: "Buyers pay in USDC at the oracle gold price. A 2% fee applies and the net amount is split by the treasury contract: 50% projects, 30% recovery reserve, 20% operations.",
+              text: "Buyers pay in USDC at the oracle gold price. A 2% fee applies and the net amount is split by the treasury contract: 50% projects, 30% recovery reserve, 8% mine owners, 5% exploration, 5% marketing and 2% tax reserve.",
             },
             {
               icon: <IconShield />,
@@ -88,6 +93,37 @@ export function Overview({ go }: { go: (v: View) => void }) {
               <p className="muted small">{s.text}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Airs */}
+      <section className="card airs-card">
+        <div className="stack">
+          <img className="airs-logo" src="/brand/airs-logo.png" alt="Airs by Alternun" />
+          <h2>Your positive impact, recognized with Airs</h2>
+          <p className="muted">
+            Airs is Alternun's reputation program. It recognizes people and companies for their positive impact and builds a
+            track record that stays with them. When you stake GBT in a solar farm or a reforestation project, your support
+            earns Airs.
+          </p>
+          <div className="row wrap">
+            <a className="btn btn-primary" href={AIRS_URL} target="_blank" rel="noreferrer">
+              Discover Airs <IconExternal />
+            </a>
+            <button className="btn btn-ghost" onClick={() => go("projects")}>See eligible projects</button>
+          </div>
+        </div>
+        <div className="airs-rates">
+          {(Object.keys(AIRS_PER_GBT) as (keyof typeof AIRS_PER_GBT)[]).map((c) => (
+            <div className="airs-rate" key={c}>
+              <span className="icon-tile mint"><CategoryIcon category={c} /></span>
+              <div>
+                <div className="small muted">{c === "Solar" ? "Solar farms" : "Reforestation"}</div>
+                <div className="title num"><span className="mint">{AIRS_PER_GBT[c]} Airs</span> <span className="small muted">per GBT staked</span></div>
+              </div>
+            </div>
+          ))}
+          <p className="xs faint">Airs are credited to your Airs profile for the GBT you keep staked in the project.</p>
         </div>
       </section>
 
@@ -163,7 +199,7 @@ export function Overview({ go }: { go: (v: View) => void }) {
               <div className="kv" key={s.key}>
                 <span className="row" style={{ gap: 8 }}>
                   <i style={{ width: 10, height: 10, borderRadius: 3, background: SPLIT_COLORS[i], display: "inline-block" }} />
-                  {s.label} <span className="faint">{fmtPct(s.share)}</span>
+                  {s.label} <span className="faint">{fmtPct(s.share, 1)}</span>
                 </span>
                 <span className="num">{p ? fmtUsd(p.pools[s.key], 0) : "…"}</span>
               </div>

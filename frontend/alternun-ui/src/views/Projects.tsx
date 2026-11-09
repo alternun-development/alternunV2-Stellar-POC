@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { CONTRACTS, PROJECT_META } from "../config";
+import { AIRS_PER_GBT, AIRS_URL, CONTRACTS, PROJECT_META, airsFor } from "../config";
 import { fmtGrams, fmtNum, fmtPct, fmtUsd } from "../format";
 import { useApp } from "../state/app";
 import { invoke, sv } from "../stellar/client";
 import type { Project } from "../stellar/protocol";
 import { CategoryIcon, IconLayers, IconShield } from "../components/icons";
-import { ConfirmModal, Progress, StatusBadge } from "../components/ui";
+import { AirsBadge, ConfirmModal, Progress, StatusBadge } from "../components/ui";
 
 type Filter = "all" | "open" | "progress" | "review";
 const FILTERS: { key: Filter; label: string }[] = [
@@ -34,7 +34,8 @@ export function Projects() {
           <h2>Regenerative projects backed by GBT</h2>
           <p className="muted">
             Commit GBT as collateral to a project. Each stake unit is valued at the oracle gold price and carries a
-            pro-rata share of the project loan, up to a 50% loan-to-value.
+            pro-rata share of the project loan, up to a 50% loan-to-value. Solar and reforestation projects also earn{" "}
+            <a href={AIRS_URL} target="_blank" rel="noreferrer">Airs</a>: 20 Airs per GBT staked.
           </p>
         </div>
         <div className="chips">
@@ -96,6 +97,8 @@ function ProjectCard({ project: x }: { project: Project }) {
   const open = x.status === "Active";
   const needGbt = units * x.stakeUnitG;
   const enough = !!account && account.gbt + 1e-9 >= needGbt;
+  const airsRate = meta ? AIRS_PER_GBT[meta.category] : undefined;
+  const airsNow = airsFor(meta?.category, needGbt);
 
   const stake = () =>
     runTx(`Staking in ${meta?.name ?? x.name}`, (onPhase) =>
@@ -109,7 +112,10 @@ function ProjectCard({ project: x }: { project: Project }) {
         <span className="badge solid">
           <CategoryIcon category={meta?.category ?? "Solar"} size={13} /> {meta?.category ?? "Project"} · {meta?.location}
         </span>
-        <StatusBadge status={x.status} />
+        <span className="cover-tags">
+          {airsRate && <AirsBadge title="Airs earned per GBT staked in this project">{airsRate} Airs / GBT</AirsBadge>}
+          <StatusBadge status={x.status} />
+        </span>
       </div>
 
       <div className="stack-sm">
@@ -158,6 +164,12 @@ function ProjectCard({ project: x }: { project: Project }) {
             <div><div className="xs faint">Loan share</div><b className="num">{fmtUsd(position.debtOwedUsd - position.debtPaidUsd, 0)}</b></div>
             <div><div className="xs faint">pGBT receipt</div><b className="num">{fmtNum(position.stakedG, 0)}</b></div>
           </div>
+          {airsRate && (
+            <div className="row small" style={{ marginTop: 10, gap: 8 }}>
+              <AirsBadge>{fmtNum(airsFor(meta?.category, position.stakedG), 0)} Airs</AirsBadge>
+              <span className="muted">earned with this position</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -169,7 +181,10 @@ function ProjectCard({ project: x }: { project: Project }) {
               <span className="num">{units}</span>
               <button onClick={() => setUnits((u) => Math.min(maxUnits, u + 1))} disabled={units >= maxUnits}>+</button>
             </div>
-            <span className="small muted num">{fmtGrams(needGbt, 0)} · {fmtUsd(units * unitUsd, 0)}</span>
+            <span className="small muted num">
+              {fmtGrams(needGbt, 0)} · {fmtUsd(units * unitUsd, 0)}
+              {airsNow > 0 && <> · <span className="mint">+{fmtNum(airsNow, 0)} Airs</span></>}
+            </span>
           </div>
           <button className="btn btn-primary" disabled={!signer || !enough} onClick={() => setConfirming(true)}>
             <IconLayers size={17} /> {!signer ? "Connect wallet" : !account ? "Loading…" : enough ? "Stake GBT" : "Mint GBT first"}
@@ -192,6 +207,7 @@ function ProjectCard({ project: x }: { project: Project }) {
             { label: "Value at oracle price", value: fmtUsd(units * unitUsd, 0) },
             { label: "Your loan share (50%)", value: fmtUsd((units * unitUsd) / 2, 0) },
             { label: "pGBT receipt", value: `${fmtNum(needGbt, 0)} pGBT` },
+            ...(airsNow > 0 ? [{ label: "Airs you earn", value: <span className="mint">{fmtNum(airsNow, 0)} Airs</span> }] : []),
           ]}
           note="Your GBT is locked in the project vault. Project profits repay your loan share first; then the GBT is released together with ePT."
           confirmLabel="Stake GBT"

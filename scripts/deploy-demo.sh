@@ -24,19 +24,21 @@ log "Building contracts"
 cargo build --target wasm32v1-none --release -q 2>/dev/null
 
 log "Accounts"
-for k in admin demo-user usdc-issuer pool-projects pool-recovery pool-alternun seed-investor; do ensure_key $k; echo "  $k = $(key $k)"; done
+ACCTS="admin demo-user usdc-issuer pool-projects pool-recovery pool-exploration pool-marketing pool-tax mine-owner-1 mine-owner-2 seed-investor"
+for k in $ACCTS; do ensure_key $k; echo "  $k = $(key $k)"; done
 
 log "Demo USDC (classic asset + Stellar Asset Contract)"
 USDC_ASSET="USDC:$(key usdc-issuer)"
 USDC_ID=$(stellar contract asset deploy --asset "$USDC_ASSET" --source admin $NET 2>/dev/null | tail -1 || true)
 [[ "$USDC_ID" =~ ^C[A-Z0-9]{55}$ ]] || USDC_ID=$(stellar contract id asset --asset "$USDC_ASSET" $NET)
 echo "  USDC SAC = $USDC_ID"
-for k in admin demo-user pool-projects pool-recovery pool-alternun seed-investor; do
+for k in $ACCTS; do
+  [[ $k == usdc-issuer ]] && continue
   stellar tx new change-trust --source $k --line "$USDC_ASSET" $NET >/dev/null 2>&1 || true
 done
 pay() { stellar tx new payment --source usdc-issuer --destination "$(key $1)" --asset "$USDC_ASSET" --amount "$2" $NET >/dev/null; }
 pay demo-user     1000000000000   # 100,000 USDC
-pay seed-investor 2000000000000   # 200,000 USDC
+pay seed-investor 8000000000000   # 800,000 USDC
 
 log "Deploying contracts"
 ORACLE=$(deploy oracle_mock);      echo "  oracle   $ORACLE"
@@ -49,7 +51,8 @@ VAULTS=$(deploy project_vaults);   echo "  vaults   $VAULTS"
 
 log "Initializing"
 inv $ORACLE admin init --admin admin --initial_price_scaled_1e7 $GOLD_PRICE_1E7
-inv $TREASURY admin init --admin admin --addr_p pool-projects --addr_r pool-recovery --addr_a pool-alternun
+POOLS=$(printf '{"projects":"%s","recovery":"%s","exploration":"%s","marketing":"%s","tax":"%s"}' "$(key pool-projects)" "$(key pool-recovery)" "$(key pool-exploration)" "$(key pool-marketing)" "$(key pool-tax)")
+inv $TREASURY admin init --admin admin --pools "$POOLS"
 inv $GBT admin initialize --admin $MINTER
 inv $PGBT admin initialize --admin $VAULTS
 inv $EPT admin initialize --admin $VAULTS
@@ -57,8 +60,8 @@ inv $MINTER admin init --admin admin --token_gbt $GBT --token_stable $USDC_ID --
 inv $VAULTS admin init --admin admin --oracle $ORACLE --token_gbt $GBT --token_pgbt $PGBT --token_ept $EPT --unstake_penalty_bps 500
 
 log "Registering mines (grams x 1000)"
-inv $MINTER admin upsert_mine --id 1 --inferidos_gm 435400000 --indicados_gm 0 --medidos_gm 0 --probables_gm 0 --probadas_gm 0 --enabled true
-inv $MINTER admin upsert_mine --id 2 --inferidos_gm 0 --indicados_gm 120000000 --medidos_gm 40000000 --probables_gm 0 --probadas_gm 0 --enabled true
+inv $MINTER admin upsert_mine --id 1 --owner mine-owner-1 --inferidos_gm 435400000 --indicados_gm 0 --medidos_gm 0 --probables_gm 0 --probadas_gm 0 --enabled true
+inv $MINTER admin upsert_mine --id 2 --owner mine-owner-2 --inferidos_gm 0 --indicados_gm 120000000 --medidos_gm 40000000 --probables_gm 0 --probadas_gm 0 --enabled true
 
 log "Creating projects"
 LEDGER=$(curl -s -X POST https://soroban-testnet.stellar.org -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger"}' | sed -E 's/.*"sequence":([0-9]+).*/\1/')
@@ -106,7 +109,12 @@ cat > $FE/src/deployment.testnet.json <<JSON
     "usdcIssuer": "$(key usdc-issuer)",
     "poolProjects": "$(key pool-projects)",
     "poolRecovery": "$(key pool-recovery)",
-    "poolAlternun": "$(key pool-alternun)",
+    "poolExploration": "$(key pool-exploration)",
+    "poolMarketing": "$(key pool-marketing)",
+    "poolTax": "$(key pool-tax)",
+    "mineOwner1": "$(key mine-owner-1)",
+    "mineOwner2": "$(key mine-owner-2)",
+    "seedInvestor": "$(key seed-investor)",
     "demoUser": "$(key demo-user)"
   }
 }

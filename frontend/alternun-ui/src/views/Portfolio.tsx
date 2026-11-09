@@ -1,4 +1,4 @@
-import { CONTRACTS, PROJECT_META } from "../config";
+import { AIRS_URL, CONTRACTS, PROJECT_META, airsFor } from "../config";
 import { fmtGrams, fmtNum, fmtUsd, statusLabel } from "../format";
 import { useApp } from "../state/app";
 import { invoke, sv } from "../stellar/client";
@@ -25,6 +25,7 @@ export function Portfolio({ go }: { go: (v: View) => void }) {
   const stakedG = a ? a.positions.reduce((s, x) => s + x.stakedG, 0) : 0;
   const debt = a ? a.positions.reduce((s, x) => s + (x.debtOwedUsd - x.debtPaidUsd), 0) : 0;
   const total = a ? a.usdc + (a.gbt + stakedG) * price : 0;
+  const airs = a ? a.positions.reduce((s, x) => s + airsFor(PROJECT_META[x.projectId]?.category, x.stakedG), 0) : 0;
 
   const unstake = (projectId: number, units: number, name: string) =>
     runTx(`Withdrawing from ${name}`, (onPhase) =>
@@ -42,8 +43,13 @@ export function Portfolio({ go }: { go: (v: View) => void }) {
             <CopyButton text={signer.address} />
           </div>
         </div>
-        <div className="card tight indigo" style={{ minWidth: 260 }}>
-          <Stat label="Total value at oracle price" value={fmtUsd(total, 0)} loading={L} sub={a && debt > 0 ? `Loan share outstanding ${fmtUsd(debt, 0)}` : undefined} />
+        <div className="row wrap" style={{ alignItems: "stretch" }}>
+          <a className="card tight airs-stat" href={AIRS_URL} target="_blank" rel="noreferrer">
+            <Stat label={<><img src="/brand/airs-symbol.png" alt="" width={15} height={15} /> Airs earned</>} value={a ? fmtNum(airs, 0) : ""} loading={L} tone="mint" sub="From solar and reforestation stakes ↗" />
+          </a>
+          <div className="card tight indigo" style={{ minWidth: 260 }}>
+            <Stat label="Total value at oracle price" value={fmtUsd(total, 0)} loading={L} sub={a && debt > 0 ? `Loan share outstanding ${fmtUsd(debt, 0)}` : undefined} />
+          </div>
         </div>
       </div>
 
@@ -87,6 +93,7 @@ export function Portfolio({ go }: { go: (v: View) => void }) {
                   <th className="r">GBT staked</th>
                   <th className="r">Value now</th>
                   <th className="r">Loan share</th>
+                  <th className="r">Airs</th>
                   <th className="r"></th>
                 </tr>
               </thead>
@@ -111,6 +118,7 @@ export function Portfolio({ go }: { go: (v: View) => void }) {
                       <td className="r num">{fmtGrams(pos.stakedG, 0)}</td>
                       <td className="r num">{fmtUsd(pos.stakedG * price, 0)}</td>
                       <td className="r num">{fmtUsd(pos.debtOwedUsd - pos.debtPaidUsd, 0)}</td>
+                      <td className="r num mint">{airsFor(meta?.category, pos.stakedG) > 0 ? fmtNum(airsFor(meta?.category, pos.stakedG), 0) : <span className="faint">—</span>}</td>
                       <td className="r">
                         {proj && !proj.finalized && (
                           <button

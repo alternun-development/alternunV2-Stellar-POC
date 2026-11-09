@@ -31,19 +31,30 @@ export const RESOURCE_WEIGHTS = [
   { key: "inferidos_gm", label: "Inferred resources", weight: 0.15 },
 ] as const;
 
+// Mirrors contracts/treasury: split of the net USDC of every mint.
 export const TREASURY_SPLIT = [
   { key: "projects", label: "Regenerative projects", share: 0.5 },
   { key: "recovery", label: "Recovery reserve", share: 0.3 },
-  { key: "alternun", label: "Alternun operations", share: 0.2 },
+  { key: "miners", label: "Mine owners", share: 0.08 },
+  { key: "exploration", label: "Exploration", share: 0.05 },
+  { key: "marketing", label: "Marketing", share: 0.05 },
+  { key: "tax", label: "Tax reserve", share: 0.02 },
 ] as const;
+export type PoolKey = (typeof TREASURY_SPLIT)[number]["key"];
 
 // Illustrative metadata shown next to on-chain data.
-export const MINE_META: Record<number, { code: string; location: string; note: string }> = {
-  1: { code: "AL-1", location: "Rionegro, Santander · Colombia", note: "Inferred resources reported under NI 43-101" },
-  2: { code: "AL-2", location: "Antioquia · Colombia", note: "Indicated and measured resources" },
+export const MINE_META: Record<number, { code: string; location: string; note: string; owner: string }> = {
+  1: { code: "AL-1", location: "Rionegro, Santander · Colombia", note: "Inferred resources reported under NI 43-101", owner: "AL-1 mine owner" },
+  2: { code: "AL-2", location: "Antioquia · Colombia", note: "Indicated and measured resources", owner: "AL-2 mine owner" },
 };
 
 export type ProjectCategory = "Solar" | "Reforestation" | "Water";
+
+// Airs, Alternun's reputation program: staking GBT in eligible projects earns Airs.
+export const AIRS_URL = "https://airs.alternun.co";
+export const AIRS_PER_GBT: Partial<Record<ProjectCategory, number>> = { Solar: 20, Reforestation: 20 };
+export const airsFor = (category: ProjectCategory | undefined, gbt: number) =>
+  category ? Math.round((AIRS_PER_GBT[category] ?? 0) * gbt) : 0;
 
 export const PROJECT_META: Record<
   number,

@@ -100,7 +100,7 @@ export function Protocol() {
           <div className="kv"><span>pGBT outstanding</span><span className="num">{p ? fmtNum(p.pgbtSupply, 3) : "…"}</span></div>
           <div className="kv"><span>ePT issued</span><span className="num">{p ? fmtNum(p.eptSupply, 3) : "…"}</span></div>
           <div className="kv"><span>Registered mines</span><span className="num">{p ? p.mines.filter((m) => m.enabled).map((m) => MINE_META[m.id]?.code ?? m.id).join(", ") : "…"}</span></div>
-          <div className="kv"><span>Treasury pools</span><span className="mono small">{[ACCOUNTS.poolProjects, ACCOUNTS.poolRecovery, ACCOUNTS.poolAlternun].map((a) => a.slice(0, 4)).join(" · ")}</span></div>
+          <div className="kv"><span>Treasury pools</span><span className="mono small">{[ACCOUNTS.poolProjects, ACCOUNTS.poolRecovery, ACCOUNTS.poolExploration, ACCOUNTS.poolMarketing, ACCOUNTS.poolTax].map((a) => a.slice(0, 4)).join(" · ")}</span></div>
         </div>
       </div>
 

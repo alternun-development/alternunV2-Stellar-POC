@@ -1,5 +1,5 @@
 import { Address, Contract, scValToNative } from "@stellar/stellar-sdk";
-import { ACCOUNTS, CONTRACTS, MAX_MINE_ID, USDC_CODE } from "../config";
+import { ACCOUNTS, CONTRACTS, MAX_MINE_ID, TREASURY_SPLIT, USDC_CODE, type PoolKey } from "../config";
 import { fromGm, fromUnits, fromUsd1e7, horizon, read, resetRpc, rpcServer, sv } from "./client";
 
 export type ProjectStatus =
@@ -20,6 +20,10 @@ export interface Mine {
   probables_gm: number;
   probadas_gm: number;
   capacityG: number;
+  owner: string;
+  mintedG: number; // GBT already backed by this mine
+  leftG: number; // capacity still available
+  ownerUsdc: number; // USDC balance of the mine owner's wallet
 }
 
 export interface Project {
@@ -64,7 +68,8 @@ export interface ProtocolState {
   lockedInVaultsG: number;
   mines: Mine[];
   projects: Project[];
-  pools: { projects: number; recovery: number; alternun: number; fees: number };
+  /** USDC balances: treasury destinations ("miners" = sum of all mine owners) plus the Alternun fee wallet. */
+  pools: Record<PoolKey | "fees", number>;
 }
 
 export interface AccountState {
@@ -134,14 +139,21 @@ async function usdcOf(address: string): Promise<{ trustline: boolean; balance: n
   }
 }
 
+export const POOL_ADDRESS: Record<Exclude<PoolKey, "miners">, string> = {
+  projects: ACCOUNTS.poolProjects,
+  recovery: ACCOUNTS.poolRecovery,
+  exploration: ACCOUNTS.poolExploration,
+  marketing: ACCOUNTS.poolMarketing,
+  tax: ACCOUNTS.poolTax,
+};
+
 export async function loadAll(address?: string): Promise<{ protocol: ProtocolState; account: AccountState | null }> {
-  const [snap, pP, pR, pA, fees, user] = await Promise.all([
+  const poolKeys = Object.keys(POOL_ADDRESS) as Exclude<PoolKey, "miners">[];
+  const [snap, fees, user, ...poolBalances] = await Promise.all([
     snapshot(),
-    usdcOf(ACCOUNTS.poolProjects),
-    usdcOf(ACCOUNTS.poolRecovery),
-    usdcOf(ACCOUNTS.poolAlternun),
     usdcOf(ACCOUNTS.admin),
     address ? usdcOf(address) : Promise.resolve(null),
+    ...poolKeys.map((k) => usdcOf(POOL_ADDRESS[k])),
   ]);
   const { oracle, minter, gbt, pgbt, ept, vaults } = snap.stores;
 
@@ -152,6 +164,7 @@ export async function loadAll(address?: string): Promise<{ protocol: ProtocolSta
     const m = minter.get(keyOf(["Mine", id])) as Record<string, unknown> | undefined;
     if (!m) continue;
     const cap = capacityGm(m, fcBps);
+    const minted = big(minter.get(keyOf(["MineMinted", id])));
     totalGm += cap;
     mines.push({
       id,
@@ -162,10 +175,18 @@ export async function loadAll(address?: string): Promise<{ protocol: ProtocolSta
       probables_gm: fromGm(big(m.probables_gm)),
       probadas_gm: fromGm(big(m.probadas_gm)),
       capacityG: fromGm(cap),
+      owner: String(m.owner ?? ""),
+      mintedG: fromGm(minted),
+      leftG: fromGm(cap - minted > 0n ? cap - minted : 0n),
+      ownerUsdc: 0,
     });
   }
+  const ownerBalances = await Promise.all(
+    mines.map((m) => (m.owner ? usdcOf(m.owner) : Promise.resolve({ trustline: false, balance: 0 }))),
+  );
+  mines.forEach((m, i) => (m.ownerUsdc = ownerBalances[i].balance));
   const mintedGm = big(minter.get('["MintedGm"]'));
-  const availGm = totalGm - mintedGm > 0n ? totalGm - mintedGm : 0n;
+  const availGm = BigInt(Math.round(mines.reduce((s, m) => s + m.leftG, 0) * 1000));
 
   const count = Number(vaults.get('["ProjectCount"]') ?? 0);
   const projects: Project[] = [];
@@ -205,7 +226,11 @@ export async function loadAll(address?: string): Promise<{ protocol: ProtocolSta
     lockedInVaultsG: fromUnits(big(gbt.get(keyOf(["Bal", CONTRACTS.vaults])))),
     mines,
     projects,
-    pools: { projects: pP.balance, recovery: pR.balance, alternun: pA.balance, fees: fees.balance },
+    pools: {
+      ...(Object.fromEntries(poolKeys.map((k, i) => [k, poolBalances[i].balance])) as Record<Exclude<PoolKey, "miners">, number>),
+      miners: mines.reduce((s, m) => s + m.ownerUsdc, 0),
+      fees: fees.balance,
+    },
   };
 
   let account: AccountState | null = null;
@@ -238,40 +263,108 @@ export async function loadAll(address?: string): Promise<{ protocol: ProtocolSta
   return { protocol, account };
 }
 
+export interface MineShare {
+  id: number;
+  owner: string;
+  grams: number; // GBT backed by this mine in the mint
+  usd: number; // USDC paid to the mine owner
+}
+
 export interface MintPreview {
   gbtOutG: number;
   netUsd: number;
   feeUsd: number;
   price: number;
   meetsMin: boolean;
+  exceedsCapacity: boolean;
   capacityLeftG: number;
+  /** Destination -> USDC, mirroring the treasury contract's integer math. */
+  split: Record<PoolKey, number>;
+  mines: MineShare[];
 }
 
-/** Exact preview from the contract (simulation). */
-export async function previewMint(amountUsd: number): Promise<MintPreview> {
-  const p = await read<Record<string, unknown>>(
+/** Mirrors gbt_minter::allocate and treasury::route (integer math in 1e7 / grams*1000 units). */
+export function distribute(gbtOutGm: bigint, net1e7: bigint, mines: Mine[]): { split: Record<PoolKey, number>; mines: MineShare[] } {
+  const open = mines.filter((m) => m.enabled && m.leftG > 0).map((m) => ({ m, left: BigInt(Math.round(m.leftG * 1000)) }));
+  const total = open.reduce((s, x) => s + x.left, 0n);
+  const alloc = open.map((x) => ({ m: x.m, gm: total > 0n ? (gbtOutGm * x.left) / total : 0n }));
+  if (alloc.length && total > 0n) {
+    const rest = gbtOutGm - alloc.reduce((s, a) => s + a.gm, 0n);
+    let bi = 0;
+    open.forEach((x, i) => {
+      if (x.left > open[bi].left) bi = i;
+    });
+    alloc[bi].gm += rest;
+  }
+  const backing = alloc.filter((a) => a.gm > 0n);
+  const bps = (k: PoolKey) => BigInt(Math.round(TREASURY_SPLIT.find((t) => t.key === k)!.share * 10_000));
+  const part = (k: PoolKey) => (net1e7 * bps(k)) / 10_000n;
+  const toMiners = part("miners");
+  const weight = backing.reduce((s, a) => s + a.gm, 0n);
+  let paid = 0n;
+  const shares: MineShare[] = backing.map((a, i) => {
+    const v = i === backing.length - 1 ? toMiners - paid : weight > 0n ? (toMiners * a.gm) / weight : 0n;
+    paid += v;
+    return { id: a.m.id, owner: a.m.owner, grams: fromGm(a.gm), usd: fromUsd1e7(v) };
+  });
+  const projects = part("projects");
+  const exploration = part("exploration");
+  const marketing = part("marketing");
+  const tax = part("tax");
+  const recovery = net1e7 - projects - paid - exploration - marketing - tax;
+  return {
+    split: {
+      projects: fromUsd1e7(projects),
+      recovery: fromUsd1e7(recovery),
+      miners: fromUsd1e7(paid),
+      exploration: fromUsd1e7(exploration),
+      marketing: fromUsd1e7(marketing),
+      tax: fromUsd1e7(tax),
+    },
+    mines: shares,
+  };
+}
+
+/** Exact preview from the contract (simulation); the per-destination split mirrors the treasury math. */
+export async function previewMint(amountUsd: number, p: ProtocolState | null): Promise<MintPreview> {
+  const r = await read<Record<string, unknown>>(
     CONTRACTS.minter,
     "preview_mint",
     sv.i128(BigInt(Math.round(amountUsd * 1e7))),
     sv.u32(MAX_MINE_ID),
   );
+  const gm = big(r.gbt_out_gm);
+  const net = big(r.net_stable_1e7);
+  const exceeds = Boolean(r.exceeds_capacity);
   return {
-    gbtOutG: fromGm(p.gbt_out_gm as bigint),
-    netUsd: fromUsd1e7(p.net_stable_1e7 as bigint),
-    feeUsd: fromUsd1e7(p.fee_stable_1e7 as bigint),
-    price: fromUsd1e7(p.price_1e7 as bigint),
-    meetsMin: Boolean(p.meets_min),
-    capacityLeftG: fromGm(p.capacity_left_gm as bigint),
+    gbtOutG: fromGm(gm),
+    netUsd: fromUsd1e7(net),
+    feeUsd: fromUsd1e7(big(r.fee_stable_1e7)),
+    price: fromUsd1e7(big(r.price_1e7)),
+    meetsMin: Boolean(r.meets_min),
+    exceedsCapacity: exceeds,
+    capacityLeftG: fromGm(big(r.capacity_left_gm)),
+    ...distribute(exceeds ? 0n : gm, net, p?.mines ?? []),
   };
 }
 
 /** Instant local estimate with the same integer math as the minter (used while the exact preview loads). */
 export function estimateMint(amountUsd: number, p: ProtocolState): MintPreview {
-  const fee = (amountUsd * p.feeBps) / 10_000;
-  const net = amountUsd - fee;
-  let out = p.goldPrice > 0 ? Math.floor((net / p.goldPrice) * 1000) / 1000 : 0;
-  const meetsMin = out >= 1;
-  if (!meetsMin) out = 0;
-  out = Math.min(out, p.availableG);
-  return { gbtOutG: out, netUsd: net, feeUsd: fee, price: p.goldPrice, meetsMin, capacityLeftG: Math.max(p.availableG - out, 0) };
+  const amount = BigInt(Math.round(amountUsd * 1e7));
+  const fee = (amount * BigInt(p.feeBps)) / 10_000n;
+  const net = amount - fee;
+  const price = BigInt(Math.round(p.goldPrice * 1e7));
+  const gm = price > 0n ? (net * 1000n) / price : 0n;
+  const availGm = BigInt(Math.round(p.availableG * 1000));
+  const exceeds = gm > availGm;
+  return {
+    gbtOutG: fromGm(gm),
+    netUsd: fromUsd1e7(net),
+    feeUsd: fromUsd1e7(fee),
+    price: p.goldPrice,
+    meetsMin: gm >= 1000n,
+    exceedsCapacity: exceeds,
+    capacityLeftG: fromGm(exceeds ? availGm : availGm - gm),
+    ...distribute(exceeds ? 0n : gm, net, p.mines),
+  };
 }

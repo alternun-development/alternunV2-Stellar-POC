@@ -16,6 +16,14 @@ export function Stat({ label, value, sub, loading, tone }: { label: ReactNode; v
   );
 }
 
+export function AirsBadge({ children, title }: { children: ReactNode; title?: string }) {
+  return (
+    <span className="badge airs" title={title}>
+      <img src="/brand/airs-symbol.png" alt="" /> {children}
+    </span>
+  );
+}
+
 export function Progress({ value, thin }: { value: number; thin?: boolean }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return (
